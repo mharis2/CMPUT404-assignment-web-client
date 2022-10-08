@@ -21,6 +21,7 @@
 import sys
 import socket
 import re
+from urllib import response
 # you may use urllib to encode data appropriately
 import urllib.parse
 
@@ -41,13 +42,13 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        return int(data.split(' ')[1])
 
     def get_headers(self,data):
         return None
 
     def get_body(self, data):
-        return None
+        return data.split('\r\n\r\n')[1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -70,11 +71,46 @@ class HTTPClient(object):
     def GET(self, url, args=None):
         code = 500
         body = ""
+        
+        # Parse the url
+        host, path, port = self.parse_url_parameters(url)
+        self.connect(host, port)
+
+        # Send the request
+        request = 'GET {} HTTP/1.1\r\n'.format(path) + "Host: {}\r\n".format(host) + "Accept: */*\r\n" + "Connection: close\r\n\r\n"
+        
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        self.close()
+        
+        code = self.get_code(response)
+        body = self.get_body(response)
+
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
         code = 500
         body = ""
+
+        # Parse the url
+        host, path, port = self.parse_url_parameters(url)    
+        self.connect(host, port)
+
+        if not args:
+            args = urllib.parse.urlencode({})
+        else:
+            args = urllib.parse.urlencode(args)
+
+        # Send the request
+        request = 'POST {} HTTP/1.1\r\n'.format(path) + "Host: {}\r\n".format(host) + "Content-Type: application/x-www-form-urlencoded\r\n" + "Content-Length: {}\r\n".format(len(args)) +  "Connection: close\r\n\r\n" + args
+        
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        self.close()
+        
+        code = self.get_code(response)
+        body = self.get_body(response)
+
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
@@ -82,7 +118,27 @@ class HTTPClient(object):
             return self.POST( url, args )
         else:
             return self.GET( url, args )
-    
+
+    def parse_url_parameters(self,url):
+
+        # Used this to get the parameters: https://docs.python.org/3/library/urllib.parse.html
+        parsed_url = urllib.parse.urlparse(url)
+        host = parsed_url.hostname
+        path = parsed_url.path
+        port = parsed_url.port
+        scheme = parsed_url.scheme
+
+        if not path:
+            path = '/'
+        
+        if not port and scheme == 'https':
+            port = 443
+        elif not port and scheme == 'http':
+            port = 80
+
+        return host, path, port
+
+
 if __name__ == "__main__":
     client = HTTPClient()
     command = "GET"
